@@ -1,6 +1,4 @@
-# Weather App
-
-☁️ Weatherly - Optimized Flutter Weather Application
+# ☁️ Weatherly - Optimized Flutter Weather Application
 
 This is a Flutter project designed to display weather information with city search capabilities and responsive, animated backgrounds (rain and snow). This version has been refactored based on the Provider architecture, focusing heavily on performance improvement and secret key security.
 
@@ -60,5 +58,20 @@ flutter:
 flutter run
 ```
 
-## Author
-Amin
+## 🤝 Contributing
+
+- Contributions are always welcome! If you find a bug, have a feature request, or want to contribute code, please follow these steps:
+
+1. Fork the repository.
+2. Create a new branch (git checkout -b feature/AmazingFeature).
+3. Commit your changes (git commit -m 'Add some AmazingFeature').
+4. Push to the branch (git push origin feature/AmazingFeature).
+5. Open a Pull Request.
+
+## 📝 License
+This project is licensed under the MIT License - see the LICENSE file for details (Note: you should create a separate LICENSE file in your repository).
+
+## 🙏 Acknowledgements
+
+- Weather Data: Provided by the OpenWeatherMap<a>https://openweathermap.org/api</a> API.
+- State Management: The excellent Provider package by Remi Rousselet.
