@@ -73,5 +73,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 🙏 Acknowledgements
 
-- Weather Data: Provided by the OpenWeatherMap<a>https://openweathermap.org/api</a> API.
+- Weather Data: Provided by the <a href="https://openweathermap.org/api">OpenWeatherMap</a> API.
 - State Management: The excellent Provider package by Remi Rousselet.
