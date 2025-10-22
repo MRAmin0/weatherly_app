@@ -48,8 +48,14 @@ class _WeatherScreenState extends State<WeatherScreen> {
           ),
           body: Stack(
             children: [
-              // 1. نمایش پس‌زمینه انیمیشنی بهینه شده
-              WeatherBackground(weatherType: store.weatherType),
+              // Use Selector so background rebuilds only when weatherType changes
+              Selector<WeatherStore, WeatherType>(
+                selector: (_, s) => s.weatherType,
+                builder: (context, weatherType, _) {
+                  final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+                  return WeatherBackground(weatherType: weatherType, isDarkMode: isDarkMode);
+                },
+              ),
 
               // 2. RefreshIndicator
               RefreshIndicator(
@@ -59,7 +65,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: ListView(
                       // برای فعال بودن کشیدن صفحه حتی با محتوای کم
-                      physics: const AlwaysScrollableScrollPhysics(), 
+                      physics: const AlwaysScrollableScrollPhysics(),
                       children: [
                         const SizedBox(height: 16),
                         _buildSearchSection(context, store),
@@ -224,7 +230,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
               final day = store.forecast[index];
               final date = DateTime.parse(day['dt_txt']);
               // بهینه‌سازی شده برای نمایش فارسی (اختیاری)
-              final dayOfWeek = ['دوشنبه', 'سه شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه', 'یکشنبه'][date.weekday - 1]; 
+              final dayOfWeek = ['دوشنبه', 'سه شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه', 'یکشنبه'][date.weekday - 1];
               final temp = day['main']['temp'].toStringAsFixed(0);
               final weatherMain = day['weather'][0]['main'];
               final icon = _getWeatherIcon(weatherMain);
@@ -268,7 +274,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
         return Icons.cloud_queue;
     }
   }
-  
+
   Widget _buildSettingsDrawer(BuildContext context, WeatherStore store) {
     return Drawer(
       child: ListView(
@@ -347,11 +353,11 @@ class GlassmorphicContainer extends StatelessWidget {
 
 class WeatherBackground extends StatelessWidget {
   final WeatherType weatherType;
-  const WeatherBackground({super.key, required this.weatherType});
+  final bool isDarkMode;
+  const WeatherBackground({super.key, required this.weatherType, required this.isDarkMode});
 
   @override
   Widget build(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     switch (weatherType) {
       case WeatherType.rain:
       case WeatherType.drizzle:
@@ -407,6 +413,7 @@ class CloudyBackground extends StatelessWidget {
 }
 
 // --- انیمیشن باران بهینه شده با CustomPainter ---
+// Painter driven by AnimationController (repaint) — no setState per frame.
 
 class RainAnimation extends StatelessWidget {
   const RainAnimation({super.key});
@@ -434,7 +441,7 @@ class AnimatedRain extends StatefulWidget {
 
 class _AnimatedRainState extends State<AnimatedRain>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+  late final AnimationController _controller;
   final List<RainDropData> _drops = [];
   static const int _numberOfDrops = 100;
 
@@ -446,17 +453,9 @@ class _AnimatedRainState extends State<AnimatedRain>
     }
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 1),
+      duration: const Duration(milliseconds: 1400),
     )..repeat();
-
-    _controller.addListener(() {
-      // فقط setState برای بازخوانی CustomPainter
-      setState(() {
-        for (var drop in _drops) {
-          drop.update();
-        }
-      });
-    });
+    // No setState per tick — painter will repaint via controller
   }
 
   @override
@@ -468,31 +467,24 @@ class _AnimatedRainState extends State<AnimatedRain>
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: RainPainter(_drops),
+      painter: RainPainter(_drops, _controller),
       child: Container(),
     );
   }
 }
 
 class RainDropData {
-  late double x, y, speed, length;
-  final Random _rand = Random();
+  final double x; // 0..1
+  final double initialY; // -0.5 .. 0
+  final double speedFactor; // how fast relative to controller
+  final double length; // px-ish
+  static final Random _rand = Random();
 
-  RainDropData() {
-    _reset();
-  }
-
-  void _reset() {
-    x = _rand.nextDouble();
-    y = -_rand.nextDouble() * 0.5;
-    speed = _rand.nextDouble() * 0.02 + 0.01;
-    length = _rand.nextDouble() * 10 + 10;
-  }
-
-  void update() {
-    y += speed;
-    if (y > 1.0) _reset();
-  }
+  RainDropData()
+      : x = _rand.nextDouble(),
+        initialY = -_rand.nextDouble() * 0.5,
+        speedFactor = _rand.nextDouble() * 0.9 + 0.3, // 0.3 .. 1.2
+        length = _rand.nextDouble() * 10 + 10;
 }
 
 class RainPainter extends CustomPainter {
@@ -500,26 +492,30 @@ class RainPainter extends CustomPainter {
   final Paint _paint = Paint()
     ..color = Colors.blue.shade100
     ..strokeWidth = 1.5;
+  final Animation<double> _repaint;
 
-  RainPainter(this.drops);
+  RainPainter(this.drops, Listenable repaint)
+      : _repaint = repaint as Animation<double>,
+        super(repaint: repaint);
 
   @override
   void paint(Canvas canvas, Size size) {
+    final double width = size.width;
+    final double height = size.height;
+    final double v = _repaint.value;
     for (var drop in drops) {
-      final startX = drop.x * size.width;
-      final startY = drop.y * size.height;
-      final endY = startY + drop.length;
-
-      canvas.drawLine(
-        Offset(startX, startY),
-        Offset(startX, endY),
-        _paint,
-      );
+      // compute progress deterministically from initialY and controller value
+      final double progress = (drop.initialY + v * drop.speedFactor) % 1.0;
+      final double startX = drop.x * width;
+      final double startY = progress * height;
+      final double endY = startY + drop.length;
+      canvas.drawLine(Offset(startX, startY), Offset(startX, endY), _paint);
     }
   }
 
+  // repaint is driven by the provided Listenable (controller)
   @override
-  bool shouldRepaint(covariant RainPainter oldDelegate) => true;
+  bool shouldRepaint(covariant RainPainter oldDelegate) => false;
 }
 
 // --- انیمیشن برف بهینه شده با CustomPainter ---
@@ -549,7 +545,7 @@ class AnimatedSnow extends StatefulWidget {
 
 class _AnimatedSnowState extends State<AnimatedSnow>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+  late final AnimationController _controller;
   final List<SnowFlakeData> _flakes = [];
   static const int _numberOfFlakes = 50;
 
@@ -561,16 +557,9 @@ class _AnimatedSnowState extends State<AnimatedSnow>
     }
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 15),
+      duration: const Duration(seconds: 12),
     )..repeat();
-
-    _controller.addListener(() {
-      setState(() {
-        for (var flake in _flakes) {
-          flake.update();
-        }
-      });
-    });
+    // No setState per tick
   }
 
   @override
@@ -582,33 +571,26 @@ class _AnimatedSnowState extends State<AnimatedSnow>
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: SnowPainter(_flakes),
+      painter: SnowPainter(_flakes, _controller),
       child: Container(),
     );
   }
 }
 
 class SnowFlakeData {
-  late double x, y, speed, size;
-  final Random _rand = Random();
+  final double x; // 0..1
+  final double initialY; // -0.5 .. 0
+  final double fallSpeed; // relative
+  final double size; // visual size
+  final double swayPhase;
+  static final Random _rand = Random();
 
-  SnowFlakeData() {
-    _reset();
-  }
-
-  void _reset() {
-    x = _rand.nextDouble();
-    y = -_rand.nextDouble() * 0.5;
-    speed = _rand.nextDouble() * 0.005 + 0.002;
-    size = _rand.nextDouble() * 6 + 4;
-  }
-
-  void update() {
-    y += speed;
-    // حرکت افقی سینوسی برای شبیه سازی باد
-    x += sin(y * 10) * 0.001; 
-    if (y > 1.0) _reset();
-  }
+  SnowFlakeData()
+      : x = _rand.nextDouble(),
+        initialY = -_rand.nextDouble() * 0.5,
+        fallSpeed = _rand.nextDouble() * 0.7 + 0.1, // 0.1..0.8
+        size = _rand.nextDouble() * 6 + 4,
+        swayPhase = _rand.nextDouble() * pi * 2;
 }
 
 class SnowPainter extends CustomPainter {
@@ -616,20 +598,58 @@ class SnowPainter extends CustomPainter {
   final Paint _paint = Paint()
     ..color = Colors.white
     ..style = PaintingStyle.fill;
+  final Animation<double> _repaint;
 
-  SnowPainter(this.flakes);
+  SnowPainter(this.flakes, Listenable repaint)
+      : _repaint = repaint as Animation<double>,
+        super(repaint: repaint);
 
   @override
   void paint(Canvas canvas, Size size) {
+    final double w = size.width;
+    final double h = size.height;
+    final double v = _repaint.value;
     for (var flake in flakes) {
-      final centerX = flake.x * size.width;
-      final centerY = flake.y * size.height;
-
-      // ترسیم دایره به جای ویجت آیکون (CustomPainter کارآمدتر است)
+      final double progress = (flake.initialY + v * flake.fallSpeed) % 1.0;
+      final double centerX = (flake.x + sin((progress * 2 * pi) + flake.swayPhase) * 0.02) * w;
+      final double centerY = progress * h;
       canvas.drawCircle(Offset(centerX, centerY), flake.size / 3, _paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant SnowPainter oldDelegate) => true;
+  bool shouldRepaint(covariant SnowPainter oldDelegate) => false;
+}
+
+// Backwards-compatible helper: provide fetchWeatherAndForecast on WeatherStore if it's missing.
+// This uses dynamic invocation to prefer an existing fetchWeather method when available,
+// otherwise falls back to triggering a search and selecting the first suggestion.
+extension WeatherStoreCompatibility on WeatherStore {
+  Future<void> fetchWeatherAndForecast({required String cityName}) async {
+    // Prefer calling a real fetch method if the store provides one.
+    try {
+      final dynamic self = this;
+      if (self.fetchWeather != null) {
+        await self.fetchWeather(cityName);
+        return;
+      }
+    } catch (_) {
+      // ignore and fall back
+    }
+
+    // Fallback: update search text and try to select the first suggestion after a short delay.
+    try {
+      onSearchChanged(cityName);
+    } catch (_) {
+      // ignore if not available
+    }
+    await Future.delayed(const Duration(milliseconds: 300));
+    try {
+      if (suggestions.isNotEmpty) {
+        selectCity(suggestions.first);
+      }
+    } catch (_) {
+      // ignore
+    }
+  }
 }

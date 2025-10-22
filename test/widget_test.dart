@@ -9,7 +9,6 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:simple_animations/simple_animations.dart';
 
@@ -240,7 +239,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
           ),
           if (_isLoading)
             Container(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withAlpha((0.5 * 255).round()),
               child: const Center(child: CircularProgressIndicator()),
             ),
         ],
