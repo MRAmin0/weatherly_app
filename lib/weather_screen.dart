@@ -52,8 +52,12 @@ class _WeatherScreenState extends State<WeatherScreen> {
               Selector<WeatherStore, WeatherType>(
                 selector: (_, s) => s.weatherType,
                 builder: (context, weatherType, _) {
-                  final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-                  return WeatherBackground(weatherType: weatherType, isDarkMode: isDarkMode);
+                  final isDarkMode =
+                      Theme.of(context).brightness == Brightness.dark;
+                  return WeatherBackground(
+                    weatherType: weatherType,
+                    isDarkMode: isDarkMode,
+                  );
                 },
               ),
 
@@ -72,8 +76,10 @@ class _WeatherScreenState extends State<WeatherScreen> {
                         const SizedBox(height: 40),
                         if (store.isLoading)
                           const Center(
-                              child: CircularProgressIndicator(
-                                  color: Colors.white70))
+                            child: CircularProgressIndicator(
+                              color: Colors.white70,
+                            ),
+                          )
                         else
                           _buildWeatherContent(store),
                       ],
@@ -95,13 +101,19 @@ class _WeatherScreenState extends State<WeatherScreen> {
   Widget _buildWeatherContent(WeatherStore store) {
     if (store.errorMessage != null) {
       return Center(
-          child: Padding(
-        padding: const EdgeInsets.only(top: 150),
-        child: Text(store.errorMessage!,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 150),
+          child: Text(
+            store.errorMessage!,
             textAlign: TextAlign.center,
             style: const TextStyle(
-                color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold)),
-      ));
+              color: Colors.redAccent,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      );
     }
     return Column(
       children: [
@@ -145,7 +157,8 @@ class _WeatherScreenState extends State<WeatherScreen> {
                       store.selectCity(store.suggestions.first);
                     } else if (_cityController.text.isNotEmpty) {
                       store.fetchWeatherAndForecast(
-                          cityName: _cityController.text);
+                        cityName: _cityController.text,
+                      );
                     }
                     _cityController.clear();
                   },
@@ -173,10 +186,14 @@ class _WeatherScreenState extends State<WeatherScreen> {
                       subtitle = '$state, $country';
                     }
                     return ListTile(
-                      title: Text(name,
-                          style: const TextStyle(color: Colors.white)),
-                      subtitle: Text(subtitle,
-                          style: const TextStyle(color: Colors.white70)),
+                      title: Text(
+                        name,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      subtitle: Text(
+                        subtitle,
+                        style: const TextStyle(color: Colors.white70),
+                      ),
                       onTap: () {
                         store.selectCity(suggestion);
                         _cityController.clear();
@@ -196,17 +213,29 @@ class _WeatherScreenState extends State<WeatherScreen> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-        Text(store.location,
-            style: const TextStyle(
-                fontSize: 42, fontWeight: FontWeight.bold, color: Colors.white),
-            textAlign: TextAlign.center),
+        Text(
+          store.location,
+          style: const TextStyle(
+            fontSize: 42,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+          textAlign: TextAlign.center,
+        ),
         const SizedBox(height: 20),
-        Text('${store.temperature?.toStringAsFixed(1) ?? '--'}°C',
-            style: const TextStyle(
-                fontSize: 64, fontWeight: FontWeight.w200, color: Colors.white)),
+        Text(
+          '${store.temperature?.toStringAsFixed(1) ?? '--'}°C',
+          style: const TextStyle(
+            fontSize: 64,
+            fontWeight: FontWeight.w200,
+            color: Colors.white,
+          ),
+        ),
         const SizedBox(height: 20),
-        Text(store.weatherType.name.toUpperCase(),
-            style: const TextStyle(fontSize: 26, color: Colors.white70)),
+        Text(
+          store.weatherType.name.toUpperCase(),
+          style: const TextStyle(fontSize: 26, color: Colors.white70),
+        ),
       ],
     );
   }
@@ -215,11 +244,14 @@ class _WeatherScreenState extends State<WeatherScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("5-Day Forecast",
-            style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.white)),
+        const Text(
+          "5-Day Forecast",
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
         const SizedBox(height: 10),
         SizedBox(
           height: 120,
@@ -230,7 +262,15 @@ class _WeatherScreenState extends State<WeatherScreen> {
               final day = store.forecast[index];
               final date = DateTime.parse(day['dt_txt']);
               // بهینه‌سازی شده برای نمایش فارسی (اختیاری)
-              final dayOfWeek = ['دوشنبه', 'سه شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه', 'یکشنبه'][date.weekday - 1];
+              final dayOfWeek = [
+                'دوشنبه',
+                'سه شنبه',
+                'چهارشنبه',
+                'پنجشنبه',
+                'جمعه',
+                'شنبه',
+                'یکشنبه',
+              ][date.weekday - 1];
               final temp = day['main']['temp'].toStringAsFixed(0);
               final weatherMain = day['weather'][0]['main'];
               final icon = _getWeatherIcon(weatherMain);
@@ -241,12 +281,18 @@ class _WeatherScreenState extends State<WeatherScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      Text(dayOfWeek,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, color: Colors.white)),
+                      Text(
+                        dayOfWeek,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                       Icon(icon, color: Colors.orangeAccent),
-                      Text('$temp°C',
-                          style: const TextStyle(color: Colors.white)),
+                      Text(
+                        '$temp°C',
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ],
                   ),
                 ),
@@ -282,7 +328,10 @@ class _WeatherScreenState extends State<WeatherScreen> {
         children: [
           const DrawerHeader(
             decoration: BoxDecoration(color: Colors.blue),
-            child: Text('Settings', style: TextStyle(color: Colors.white, fontSize: 24)),
+            child: Text(
+              'Settings',
+              style: TextStyle(color: Colors.white, fontSize: 24),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -291,23 +340,30 @@ class _WeatherScreenState extends State<WeatherScreen> {
               children: [
                 Text('Theme', style: Theme.of(context).textTheme.titleLarge),
                 const Divider(),
-                RadioListTile<ThemeMode>(
-                  title: const Text('System Default'),
-                  value: ThemeMode.system,
-                  groupValue: widget.currentThemeMode,
-                  onChanged: (v) => v != null ? widget.onThemeChanged(v) : null,
-                ),
-                RadioListTile<ThemeMode>(
-                  title: const Text('Light'),
-                  value: ThemeMode.light,
-                  groupValue: widget.currentThemeMode,
-                  onChanged: (v) => v != null ? widget.onThemeChanged(v) : null,
-                ),
-                RadioListTile<ThemeMode>(
-                  title: const Text('Dark'),
-                  value: ThemeMode.dark,
-                  groupValue: widget.currentThemeMode,
-                  onChanged: (v) => v != null ? widget.onThemeChanged(v) : null,
+                SegmentedButton<ThemeMode>(
+                  segments: const [
+                    ButtonSegment<ThemeMode>(
+                      value: ThemeMode.system,
+                      label: Text('System'),
+                      icon: Icon(Icons.phone_iphone),
+                    ),
+                    ButtonSegment<ThemeMode>(
+                      value: ThemeMode.light,
+                      label: Text('Light'),
+                      icon: Icon(Icons.light_mode),
+                    ),
+                    ButtonSegment<ThemeMode>(
+                      value: ThemeMode.dark,
+                      label: Text('Dark'),
+                      icon: Icon(Icons.dark_mode),
+                    ),
+                  ],
+                  selected: {widget.currentThemeMode},
+                  onSelectionChanged: (selection) {
+                    if (selection.isNotEmpty) {
+                      widget.onThemeChanged(selection.first);
+                    }
+                  },
                 ),
               ],
             ),
@@ -336,9 +392,9 @@ class GlassmorphicContainer extends StatelessWidget {
         child: Container(
           margin: const EdgeInsets.only(right: 10, bottom: 10),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.15),
+            color: Colors.white.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(15.0),
-            border: Border.all(color: Colors.white.withOpacity(0.3)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
           ),
           child: child,
         ),
@@ -354,7 +410,11 @@ class GlassmorphicContainer extends StatelessWidget {
 class WeatherBackground extends StatelessWidget {
   final WeatherType weatherType;
   final bool isDarkMode;
-  const WeatherBackground({super.key, required this.weatherType, required this.isDarkMode});
+  const WeatherBackground({
+    super.key,
+    required this.weatherType,
+    required this.isDarkMode,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -481,10 +541,10 @@ class RainDropData {
   static final Random _rand = Random();
 
   RainDropData()
-      : x = _rand.nextDouble(),
-        initialY = -_rand.nextDouble() * 0.5,
-        speedFactor = _rand.nextDouble() * 0.9 + 0.3, // 0.3 .. 1.2
-        length = _rand.nextDouble() * 10 + 10;
+    : x = _rand.nextDouble(),
+      initialY = -_rand.nextDouble() * 0.5,
+      speedFactor = _rand.nextDouble() * 0.9 + 0.3, // 0.3 .. 1.2
+      length = _rand.nextDouble() * 10 + 10;
 }
 
 class RainPainter extends CustomPainter {
@@ -495,8 +555,8 @@ class RainPainter extends CustomPainter {
   final Animation<double> _repaint;
 
   RainPainter(this.drops, Listenable repaint)
-      : _repaint = repaint as Animation<double>,
-        super(repaint: repaint);
+    : _repaint = repaint as Animation<double>,
+      super(repaint: repaint);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -586,11 +646,11 @@ class SnowFlakeData {
   static final Random _rand = Random();
 
   SnowFlakeData()
-      : x = _rand.nextDouble(),
-        initialY = -_rand.nextDouble() * 0.5,
-        fallSpeed = _rand.nextDouble() * 0.7 + 0.1, // 0.1..0.8
-        size = _rand.nextDouble() * 6 + 4,
-        swayPhase = _rand.nextDouble() * pi * 2;
+    : x = _rand.nextDouble(),
+      initialY = -_rand.nextDouble() * 0.5,
+      fallSpeed = _rand.nextDouble() * 0.7 + 0.1, // 0.1..0.8
+      size = _rand.nextDouble() * 6 + 4,
+      swayPhase = _rand.nextDouble() * pi * 2;
 }
 
 class SnowPainter extends CustomPainter {
@@ -601,8 +661,8 @@ class SnowPainter extends CustomPainter {
   final Animation<double> _repaint;
 
   SnowPainter(this.flakes, Listenable repaint)
-      : _repaint = repaint as Animation<double>,
-        super(repaint: repaint);
+    : _repaint = repaint as Animation<double>,
+      super(repaint: repaint);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -611,7 +671,8 @@ class SnowPainter extends CustomPainter {
     final double v = _repaint.value;
     for (var flake in flakes) {
       final double progress = (flake.initialY + v * flake.fallSpeed) % 1.0;
-      final double centerX = (flake.x + sin((progress * 2 * pi) + flake.swayPhase) * 0.02) * w;
+      final double centerX =
+          (flake.x + sin((progress * 2 * pi) + flake.swayPhase) * 0.02) * w;
       final double centerY = progress * h;
       canvas.drawCircle(Offset(centerX, centerY), flake.size / 3, _paint);
     }

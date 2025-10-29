@@ -271,28 +271,29 @@ class _WeatherScreenState extends State<WeatherScreen> {
               children: [
                 Text('Theme', style: Theme.of(context).textTheme.titleLarge),
                 const Divider(),
-                RadioListTile<ThemeMode>(
-                  title: const Text('System Default'),
-                  value: ThemeMode.system,
-                  groupValue: widget.currentThemeMode,
-                  onChanged: (ThemeMode? value) {
-                    if (value != null) widget.onThemeChanged(value);
-                  },
-                ),
-                RadioListTile<ThemeMode>(
-                  title: const Text('Light'),
-                  value: ThemeMode.light,
-                  groupValue: widget.currentThemeMode,
-                  onChanged: (ThemeMode? value) {
-                    if (value != null) widget.onThemeChanged(value);
-                  },
-                ),
-                RadioListTile<ThemeMode>(
-                  title: const Text('Dark'),
-                  value: ThemeMode.dark,
-                  groupValue: widget.currentThemeMode,
-                  onChanged: (ThemeMode? value) {
-                    if (value != null) widget.onThemeChanged(value);
+                SegmentedButton<ThemeMode>(
+                  segments: const [
+                    ButtonSegment<ThemeMode>(
+                      value: ThemeMode.system,
+                      label: Text('System'),
+                      icon: Icon(Icons.phone_iphone),
+                    ),
+                    ButtonSegment<ThemeMode>(
+                      value: ThemeMode.light,
+                      label: Text('Light'),
+                      icon: Icon(Icons.light_mode),
+                    ),
+                    ButtonSegment<ThemeMode>(
+                      value: ThemeMode.dark,
+                      label: Text('Dark'),
+                      icon: Icon(Icons.dark_mode),
+                    ),
+                  ],
+                  selected: {widget.currentThemeMode},
+                  onSelectionChanged: (selection) {
+                    if (selection.isNotEmpty) {
+                      widget.onThemeChanged(selection.first);
+                    }
                   },
                 ),
               ],
@@ -479,10 +480,10 @@ class GlassmorphicContainer extends StatelessWidget {
         child: Container(
           margin: const EdgeInsets.only(right: 10),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(15.0),
             border: Border.all(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
             ),
           ),
           child: child,
