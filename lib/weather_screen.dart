@@ -127,84 +127,133 @@ class _WeatherScreenState extends State<WeatherScreen> {
   Widget _buildSearchSection(BuildContext context, WeatherStore store) {
     return Column(
       children: [
-        GlassmorphicContainer(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _cityController,
-                    style: const TextStyle(color: Colors.white),
-                    maxLength: 15,
-                    onChanged: store.onSearchChanged,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
-                    ],
-                    decoration: const InputDecoration(
-                      hintText: 'e.g., London',
-                      hintStyle: TextStyle(color: Colors.white54),
-                      border: InputBorder.none,
-                      counterText: "",
+        RawAutocomplete<Map<String, dynamic>>(
+          textEditingController: _cityController,
+          optionsBuilder: (TextEditingValue textEditingValue) {
+            final query = textEditingValue.text;
+            // Trigger async suggestions fetch
+            store.onSearchChanged(query);
+            // Return current suggestions snapshot
+            return store.suggestions;
+          },
+          displayStringForOption: (option) {
+            final name = option['name'] ?? '';
+            final country = option['country'] ?? '';
+            final state = option['state'] ?? '';
+            if (state is String && state.isNotEmpty && state != name) {
+              return '$name, $state, $country';
+            }
+            return country is String && country.isNotEmpty
+                ? '$name, $country'
+                : name;
+          },
+          onSelected: (option) {
+            store.selectCity(option);
+            _cityController.clear();
+            FocusScope.of(context).unfocus();
+          },
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            return GlassmorphicContainer(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        style: const TextStyle(color: Colors.white),
+                        maxLength: 15,
+                        onChanged: store.onSearchChanged,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
+                        ],
+                        decoration: const InputDecoration(
+                          hintText: 'e.g., London',
+                          hintStyle: TextStyle(color: Colors.white54),
+                          border: InputBorder.none,
+                          counterText: "",
+                        ),
+                        onSubmitted: (_) {
+                          // Let RawAutocomplete attempt to select the highlighted option
+                          onFieldSubmitted();
+                          // If nothing was selected, fall back to manual search
+                          if (store.suggestions.isNotEmpty) {
+                            store.selectCity(store.suggestions.first);
+                          } else if (controller.text.isNotEmpty) {
+                            store.fetchWeatherAndForecast(
+                              cityName: controller.text,
+                            );
+                          }
+                          controller.clear();
+                          FocusScope.of(context).unfocus();
+                        },
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.search, color: Colors.white),
+                      onPressed: () {
+                        FocusScope.of(context).unfocus();
+                        if (store.suggestions.isNotEmpty) {
+                          store.selectCity(store.suggestions.first);
+                        } else if (controller.text.isNotEmpty) {
+                          store.fetchWeatherAndForecast(
+                            cityName: controller.text,
+                          );
+                        }
+                        controller.clear();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            final items = options.toList(growable: false);
+            if (items.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            // Positioned/Overlay list styled like previous suggestions panel
+            return Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 240, maxWidth: 800),
+                  child: GlassmorphicContainer(
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: items.length,
+                      itemBuilder: (context, index) {
+                        final suggestion = items[index];
+                        final name = suggestion['name'] ?? 'Unknown';
+                        final country = suggestion['country'] ?? '';
+                        final state = suggestion['state'] ?? '';
+                        String subtitle = country;
+                        if (state is String && state.isNotEmpty && state != name) {
+                          subtitle = '$state, $country';
+                        }
+                        return ListTile(
+                          title: Text(
+                            name,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          subtitle: Text(
+                            subtitle,
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          onTap: () => onSelected(suggestion),
+                        );
+                      },
                     ),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.search, color: Colors.white),
-                  onPressed: () {
-                    FocusScope.of(context).unfocus();
-                    if (store.suggestions.isNotEmpty) {
-                      store.selectCity(store.suggestions.first);
-                    } else if (_cityController.text.isNotEmpty) {
-                      store.fetchWeatherAndForecast(
-                        cityName: _cityController.text,
-                      );
-                    }
-                    _cityController.clear();
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (store.suggestions.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: GlassmorphicContainer(
-              child: SizedBox(
-                height: 200,
-                child: ListView.builder(
-                  padding: EdgeInsets.zero,
-                  itemCount: store.suggestions.length,
-                  itemBuilder: (context, index) {
-                    final suggestion = store.suggestions[index];
-                    final name = suggestion['name'] ?? 'Unknown';
-                    final country = suggestion['country'] ?? '';
-                    final state = suggestion['state'] ?? '';
-                    String subtitle = country;
-                    if (state.isNotEmpty && state != name) {
-                      subtitle = '$state, $country';
-                    }
-                    return ListTile(
-                      title: Text(
-                        name,
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                      subtitle: Text(
-                        subtitle,
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                      onTap: () {
-                        store.selectCity(suggestion);
-                        _cityController.clear();
-                        FocusScope.of(context).unfocus();
-                      },
-                    );
-                  },
-                ),
               ),
-            ),
-          ),
+            );
+          },
+        ),
       ],
     );
   }
