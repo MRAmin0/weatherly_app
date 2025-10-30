@@ -48,3 +48,5 @@ app.*.map.json
 /ios
 /linux
 /macos
+/assets/open weather api.txt
+
