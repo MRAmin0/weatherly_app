@@ -44,7 +44,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 /keys.json
-.vscode
+/.vscode
 /ios
 /linux
 /macos
