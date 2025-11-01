@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'config_reader.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+
 enum WeatherType { rain, snow, clear, clouds, drizzle, thunderstorm, unknown }
 
 class WeatherStore extends ChangeNotifier {
@@ -310,7 +311,7 @@ class WeatherStore extends ChangeNotifier {
 
     _fetchWeatherAndForecast(lat: lat, lon: lon);
     fetchHourlyForecast(lat!, lon!);
-    fetchAirQuality(lat!, lon!);
+    fetchAirQuality(lat, lon);
   }
 
   Future<void> handleRefresh() async {
@@ -333,7 +334,9 @@ class WeatherStore extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      print('خطا در دریافت دمای ساعتی: $e');
+      if (kDebugMode) {
+        print('خطا در دریافت دمای ساعتی: $e');
+      }
     }
   }
   // ----------------------------------------------------------------------
@@ -391,10 +394,14 @@ class WeatherStore extends ChangeNotifier {
         _airQualityIndex = aqiValue;
         notifyListeners();
       } else {
-        print('Air Quality fetch failed: ${res.statusCode}');
+        if (kDebugMode) {
+          print('Air Quality fetch failed: ${res.statusCode}');
+        }
       }
     } catch (e) {
-      print('خطا در دریافت آلودگی هوا: $e');
+      if (kDebugMode) {
+        print('خطا در دریافت آلودگی هوا: $e');
+      }
     }
   }
 
