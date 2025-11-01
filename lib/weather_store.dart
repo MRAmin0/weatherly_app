@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'config_reader.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum WeatherType { rain, snow, clear, clouds, drizzle, thunderstorm, unknown }
 
@@ -10,12 +11,26 @@ class WeatherStore extends ChangeNotifier {
   // خواندن کلید API از ConfigReader به جای Hardcode
   final String _apiKey = ConfigReader.getOpenWeatherApiKey();
 
+  bool _showHourly = true;
+  bool _showAirQuality = true;
+  bool _useCelsius = true;
+  String _defaultCity = 'Tehran';
+
+  bool get showHourly => _showHourly;
+  bool get showAirQuality => _showAirQuality;
+  bool get useCelsius => _useCelsius;
+  String get defaultCity => _defaultCity;
+
   // 1. متغیرهای وضعیت
+  int? _airQualityIndex;
+  int? get airQualityIndex => _airQualityIndex;
+
   String _location = 'Tehran';
   double? _temperature;
   WeatherType _weatherType = WeatherType.unknown;
   bool _isLoading = false;
   List<Map<String, dynamic>> _suggestions = [];
+  List<Map<String, dynamic>> hourlyForecast = [];
   List<dynamic> _forecast = [];
   double? _currentLat;
   double? _currentLon;
@@ -99,7 +114,27 @@ class WeatherStore extends ChangeNotifier {
   }
 
   WeatherStore() {
-    _fetchWeatherAndForecast(cityName: _location);
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _fetchWeatherAndForecast(cityName: _location);
+
+    await _loadPreferences();
+
+    if (_currentLat != null && _currentLon != null) {
+      await fetchHourlyForecast(_currentLat!, _currentLon!);
+    } else {
+      // اگر مختصات هنوز ست نشده بود، از ژئوکد برای پیدا کردنش استفاده کن
+      final resolved = await _resolveCityToCoord(_location);
+      if (resolved != null) {
+        final lat = (resolved['lat'] as num?)?.toDouble();
+        final lon = (resolved['lon'] as num?)?.toDouble();
+        if (lat != null && lon != null) {
+          await fetchHourlyForecast(lat, lon);
+        }
+      }
+    }
   }
 
   void _setLoading(bool loading) {
@@ -219,6 +254,9 @@ class WeatherStore extends ChangeNotifier {
         _currentLon =
             (weatherData['coord']?['lon'] as num?)?.toDouble() ?? useLon;
         _suggestions = [];
+        if (_currentLat != null && _currentLon != null) {
+          await fetchAirQuality(_currentLat!, _currentLon!);
+        }
       } else {
         _errorMessage =
             'City not found or server error (${weatherResponse.statusCode}).';
@@ -271,13 +309,92 @@ class WeatherStore extends ChangeNotifier {
     notifyListeners();
 
     _fetchWeatherAndForecast(lat: lat, lon: lon);
+    fetchHourlyForecast(lat!, lon!);
+    fetchAirQuality(lat!, lon!);
   }
 
   Future<void> handleRefresh() async {
     if (_currentLat != null && _currentLon != null) {
       await _fetchWeatherAndForecast(lat: _currentLat, lon: _currentLon);
+      await fetchAirQuality(_currentLat!, _currentLon!);
     } else {
       await _fetchWeatherAndForecast(cityName: _location);
+    }
+  }
+
+  Future<void> fetchHourlyForecast(double lat, double lon) async {
+    final url =
+        'https://api.openweathermap.org/data/2.5/forecast?lat=$lat&lon=$lon&appid=$_apiKey&units=metric&cnt=8';
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        hourlyForecast = List<Map<String, dynamic>>.from(data['list']);
+        notifyListeners();
+      }
+    } catch (e) {
+      print('خطا در دریافت دمای ساعتی: $e');
+    }
+  }
+  // ----------------------------------------------------------------------
+  // مدیریت SharedPreferences (ذخیره و بارگذاری تنظیمات)
+  // ----------------------------------------------------------------------
+
+  Future<void> _loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    _showHourly = prefs.getBool('showHourly') ?? true;
+    _showAirQuality = prefs.getBool('showAirQuality') ?? true;
+    _useCelsius = prefs.getBool('useCelsius') ?? true;
+    _defaultCity = prefs.getString('defaultCity') ?? 'Tehran';
+    notifyListeners();
+  }
+
+  Future<void> updatePreference(String key, dynamic value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value is bool) await prefs.setBool(key, value);
+    if (value is String) await prefs.setString(key, value);
+    if (value is double) await prefs.setDouble(key, value);
+    if (value is int) await prefs.setInt(key, value);
+
+    // مقدارهای داخلی هم بلافاصله به‌روز می‌شن:
+    switch (key) {
+      case 'showHourly':
+        _showHourly = value;
+        break;
+      case 'showAirQuality':
+        _showAirQuality = value;
+        break;
+      case 'useCelsius':
+        _useCelsius = value;
+        break;
+      case 'defaultCity':
+        _defaultCity = value;
+        break;
+    }
+
+    notifyListeners();
+  }
+
+  Future<void> fetchAirQuality(double lat, double lon) async {
+    final url =
+        'https://api.openweathermap.org/data/2.5/air_pollution?lat=$lat&lon=$lon&appid=$_apiKey';
+
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+
+        // API ساختارش اینطوریه: list[0].main.aqi
+        final aqiValue = data['list'][0]['main']['aqi'] as int;
+
+        // مقدار رو در map ذخیره می‌کنیم تا UI بخونه
+        _airQualityIndex = aqiValue;
+        notifyListeners();
+      } else {
+        print('Air Quality fetch failed: ${res.statusCode}');
+      }
+    } catch (e) {
+      print('خطا در دریافت آلودگی هوا: $e');
     }
   }
 
