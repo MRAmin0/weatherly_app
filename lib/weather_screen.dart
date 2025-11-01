@@ -132,6 +132,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
                             RegExp(r'[ء-يآ-یa-zA-Z\s]'),
                           ),
                         ],
+                        textAlign: TextAlign.right,
                         decoration: const InputDecoration(
                           hintText: 'نام شهر را وارد کنید...',
                           hintStyle: TextStyle(color: Colors.white54),
