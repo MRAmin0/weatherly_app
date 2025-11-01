@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'weather_store.dart';
+import 'settings_drawer.dart';
 
 // ----------------------------------------------------------------------
 // ویجت اصلی UI
@@ -29,7 +30,11 @@ class _WeatherScreenState extends State<WeatherScreen> {
     return Consumer<WeatherStore>(
       builder: (context, store, child) {
         return Scaffold(
-          drawer: _buildSettingsDrawer(context, store),
+          drawer: SettingsDrawer(
+            store: store,
+            currentThemeMode: widget.currentThemeMode,
+            onThemeChanged: widget.onThemeChanged,
+          ),
           extendBodyBehindAppBar: true,
           appBar: AppBar(
             title: const Text('هواشناسی'),
@@ -95,7 +100,6 @@ class _WeatherScreenState extends State<WeatherScreen> {
             store.onSearchChanged(query);
             return store.suggestions;
           },
-          // نام قابل نمایش هر گزینه: اول فارسی، بعد لاتین؛ سپس استان/کشور
           displayStringForOption: (option) {
             final nameFa =
                 (option['local_names']?['fa'] ?? option['name'] ?? '')
@@ -127,7 +131,6 @@ class _WeatherScreenState extends State<WeatherScreen> {
                         onChanged: store.onSearchChanged,
                         textInputAction: TextInputAction.search,
                         inputFormatters: [
-                          // حروف فارسی/لاتین و فاصله
                           FilteringTextInputFormatter.allow(
                             RegExp(r'[ء-يآ-یa-zA-Z\s]'),
                           ),
@@ -147,7 +150,6 @@ class _WeatherScreenState extends State<WeatherScreen> {
                           if (store.suggestions.isNotEmpty) {
                             store.selectCity(store.suggestions.first);
                           } else if (text.isNotEmpty) {
-                            // این متد در انتهای فایل به‌صورت extension پیاده‌سازی شده
                             await store.fetchWeatherAndForecast(cityName: text);
                           }
 
@@ -258,13 +260,154 @@ class _WeatherScreenState extends State<WeatherScreen> {
     return Column(
       children: [
         _buildCurrentWeatherSection(store),
+        if (store.showAirQuality) ...[
+          const SizedBox(height: 30),
+          _buildAirQualitySection(store),
+        ],
         const SizedBox(height: 40),
         if (store.forecast.isNotEmpty) _buildForecastSection(store),
+        const SizedBox(height: 30),
+        if (store.hourlyForecast.isNotEmpty) _buildHourlySection(store),
       ],
     );
   }
 
+  Widget _buildHourlySection(WeatherStore store) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "دمای ساعتی",
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 120,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: store.hourlyForecast.length,
+            itemBuilder: (context, index) {
+              final hour = store.hourlyForecast[index];
+              final date = DateTime.parse(hour['dt_txt']);
+              final rawTemp = (hour['main']['temp'] as num).toDouble();
+              final displayedTemp = store.useCelsius
+                  ? rawTemp
+                  : (rawTemp * 9 / 5) + 32;
+              final temp = displayedTemp.toStringAsFixed(0);
+              final main = hour['weather'][0]['main'] as String;
+              final icon = _getWeatherIcon(main);
+
+              return GlassmorphicContainer(
+                child: SizedBox(
+                  width: 80,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "${date.hour}:00",
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Icon(icon, color: Colors.orangeAccent),
+                      const SizedBox(height: 8),
+                      Text(
+                        "$temp°",
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAirQualitySection(WeatherStore store) {
+    final aqi = store.airQualityIndex ?? 0;
+    String status;
+    Color color;
+
+    switch (aqi) {
+      case 1:
+        status = 'خوب';
+        color = Colors.greenAccent;
+        break;
+      case 2:
+        status = 'متوسط';
+        color = Colors.yellowAccent;
+        break;
+      case 3:
+        status = 'ناسالم برای گروه‌های حساس';
+        color = Colors.orangeAccent;
+        break;
+      case 4:
+        status = 'ناسالم';
+        color = Colors.redAccent;
+        break;
+      case 5:
+        status = 'خیلی ناسالم';
+        color = Colors.purpleAccent;
+        break;
+      default:
+        status = 'نامشخص';
+        color = Colors.grey;
+    }
+
+    return GlassmorphicContainer(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'کیفیت هوا',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'شاخص: $aqi',
+                  style: const TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+                Text(
+                  status,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            Icon(Icons.air_rounded, color: color, size: 42),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildCurrentWeatherSection(WeatherStore store) {
+    final tempC = store.temperature;
+    final temp = store.useCelsius
+        ? tempC
+        : (tempC != null ? (tempC * 9 / 5) + 32 : null);
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
@@ -279,7 +422,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
         ),
         const SizedBox(height: 20),
         Text(
-          '${store.temperature?.toStringAsFixed(1) ?? '--'}°',
+          '${temp?.toStringAsFixed(1) ?? '--'}°',
           style: const TextStyle(
             fontSize: 64,
             fontWeight: FontWeight.w200,
@@ -327,7 +470,11 @@ class _WeatherScreenState extends State<WeatherScreen> {
               final day = store.forecast[index];
               final date = DateTime.parse(day['dt_txt']);
               final dayOfWeek = daysFa[(date.weekday - 1) % 7];
-              final temp = (day['main']['temp'] as num).toStringAsFixed(0);
+              final rawTemp = (day['main']['temp'] as num).toDouble();
+              final displayedTemp = store.useCelsius
+                  ? rawTemp
+                  : (rawTemp * 9 / 5) + 32;
+              final temp = displayedTemp.toStringAsFixed(0);
               final weatherMain = day['weather'][0]['main'] as String;
               final icon = _getWeatherIcon(weatherMain);
 
@@ -375,312 +522,5 @@ class _WeatherScreenState extends State<WeatherScreen> {
       default:
         return Icons.cloud_queue;
     }
-  }
-
-  Widget _buildSettingsDrawer(BuildContext context, WeatherStore store) {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          const DrawerHeader(
-            decoration: BoxDecoration(color: Colors.blue),
-            child: Text(
-              'تنظیمات',
-              style: TextStyle(color: Colors.white, fontSize: 24),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'تم برنامه',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const Divider(),
-                SegmentedButton<ThemeMode>(
-                  segments: const [
-                    ButtonSegment<ThemeMode>(
-                      value: ThemeMode.system,
-                      label: Text('سیستم'),
-                      icon: Icon(Icons.phone_iphone),
-                    ),
-                    ButtonSegment<ThemeMode>(
-                      value: ThemeMode.light,
-                      label: Text('روشن'),
-                      icon: Icon(Icons.light_mode),
-                    ),
-                    ButtonSegment<ThemeMode>(
-                      value: ThemeMode.dark,
-                      label: Text('تاریک'),
-                      icon: Icon(Icons.dark_mode),
-                    ),
-                  ],
-                  selected: {widget.currentThemeMode},
-                  onSelectionChanged: (selection) {
-                    if (selection.isNotEmpty) {
-                      widget.onThemeChanged(selection.first);
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ----------------------------------------------------------------------
-// Glassmorphism Container
-// ----------------------------------------------------------------------
-
-class GlassmorphicContainer extends StatelessWidget {
-  final Widget child;
-  const GlassmorphicContainer({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(15.0),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
-        child: Container(
-          margin: const EdgeInsets.only(right: 10, bottom: 10),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(15.0),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
-// ----------------------------------------------------------------------
-// پس‌زمینه ساده (با باران/برف سبک)
-// ----------------------------------------------------------------------
-
-class WeatherBackground extends StatelessWidget {
-  final WeatherType weatherType;
-  final bool isDarkMode;
-  const WeatherBackground({
-    super.key,
-    required this.weatherType,
-    required this.isDarkMode,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    switch (weatherType) {
-      case WeatherType.clear:
-      case WeatherType.unknown:
-        return SunnyBackground(isDarkMode: isDarkMode);
-      case WeatherType.clouds:
-        return CloudyBackground(isDarkMode: isDarkMode);
-      case WeatherType.rain:
-      case WeatherType.drizzle:
-      case WeatherType.thunderstorm:
-        return Stack(
-          children: [
-            CloudyBackground(isDarkMode: isDarkMode),
-            const SimpleRainBackground(),
-          ],
-        );
-      case WeatherType.snow:
-        return Stack(
-          children: [
-            CloudyBackground(isDarkMode: isDarkMode),
-            const SimpleSnowBackground(),
-          ],
-        );
-    }
-  }
-}
-
-class SunnyBackground extends StatelessWidget {
-  final bool isDarkMode;
-  const SunnyBackground({super.key, required this.isDarkMode});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: isDarkMode
-              ? [const Color(0xFF233053), const Color(0xFF000000)]
-              : [const Color(0xFF4A90E2), const Color(0xFF81C7F5)],
-        ),
-      ),
-    );
-  }
-}
-
-class CloudyBackground extends StatelessWidget {
-  final bool isDarkMode;
-  const CloudyBackground({super.key, required this.isDarkMode});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: isDarkMode
-              ? [const Color(0xFF3C4E68), const Color(0xFF202A38)]
-              : [const Color(0xFF7D97B3), const Color(0xFFB3C6D9)],
-        ),
-      ),
-    );
-  }
-}
-
-// ----------------------------------------------------------------------
-// نسخه سبک باران / برف با Icon
-// ----------------------------------------------------------------------
-
-class SimpleRainBackground extends StatefulWidget {
-  const SimpleRainBackground({super.key});
-
-  @override
-  State<SimpleRainBackground> createState() => _SimpleRainBackgroundState();
-}
-
-class _SimpleRainBackgroundState extends State<SimpleRainBackground> {
-  final Random _rand = Random();
-  List<double> _positions = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _resetPositions();
-    _animate();
-  }
-
-  void _resetPositions() {
-    _positions = List.generate(10, (_) => -_rand.nextDouble() * 200);
-  }
-
-  void _animate() async {
-    while (mounted) {
-      await Future.delayed(const Duration(milliseconds: 50));
-      setState(() {
-        for (int i = 0; i < _positions.length; i++) {
-          _positions[i] += 15;
-          if (_positions[i] > MediaQuery.of(context).size.height) {
-            _positions[i] = -_rand.nextDouble() * 200;
-          }
-        }
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-
-    return Stack(
-      children: List.generate(_positions.length, (i) {
-        final left = _rand.nextDouble() * width;
-        return Positioned(
-          top: _positions[i],
-          left: left,
-          child: Icon(Icons.water_drop, color: Colors.blue.shade200, size: 18),
-        );
-      }),
-    );
-  }
-}
-
-class SimpleSnowBackground extends StatefulWidget {
-  const SimpleSnowBackground({super.key});
-
-  @override
-  State<SimpleSnowBackground> createState() => _SimpleSnowBackgroundState();
-}
-
-class _SimpleSnowBackgroundState extends State<SimpleSnowBackground> {
-  final Random _rand = Random();
-  List<double> _positions = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _resetPositions();
-    _animate();
-  }
-
-  void _resetPositions() {
-    _positions = List.generate(10, (_) => -_rand.nextDouble() * 200);
-  }
-
-  void _animate() async {
-    while (mounted) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      setState(() {
-        for (int i = 0; i < _positions.length; i++) {
-          _positions[i] += 5;
-          if (_positions[i] > MediaQuery.of(context).size.height) {
-            _positions[i] = -_rand.nextDouble() * 200;
-          }
-        }
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-
-    return Stack(
-      children: List.generate(_positions.length, (i) {
-        final left = _rand.nextDouble() * width;
-        return Positioned(
-          top: _positions[i],
-          left: left,
-          child: const Icon(Icons.ac_unit, color: Colors.white70, size: 20),
-        );
-      }),
-    );
-  }
-}
-
-// ----------------------------------------------------------------------
-// Helper برای سازگاری با WeatherStore (فراخوانی با اسم شهر)
-// ----------------------------------------------------------------------
-
-extension WeatherStoreCompatibility on WeatherStore {
-  /// اگر ساجست‌ها پر باشد اولین گزینه انتخاب می‌شود؛
-  /// وگرنه مستقیم با cityName (که خودش داخل استور ژئوکد می‌شود) فراخوانی می‌گردد.
-  Future<void> fetchWeatherAndForecast({required String cityName}) async {
-    // اول یک جستجو بزنیم تا ساجست‌ها بیاید
-    try {
-      onSearchChanged(cityName);
-    } catch (_) {}
-    await Future.delayed(const Duration(milliseconds: 350));
-
-    try {
-      if (suggestions.isNotEmpty) {
-        selectCity(suggestions.first);
-        return;
-      }
-    } catch (_) {}
-
-    // اگر ساجست خالی بود، استور خودش اسم را ژئوکد می‌کند
-    try {
-      // متد خصوصی را public نداریم؛ ولی خود استور با cityName هندل می‌کند (ژئوکد داخلی)
-      // این ترفند: از رفرش استفاده نمی‌کنیم چون مختصات نداریم؛
-      // پس از مسیر "اسم شهر → ژئوکد → مختصات" در خود استور بهره می‌بریم:
-      // برای این کار، location را موقت تنظیم می‌کنیم و رفرش می‌زنیم.
-      // اما بهتر: یک متد public در استور اضافه کرده‌ایم (در نسخه جدید) که cityName را می‌پذیرد.
-      // اگر نسخه شما آن متد را ندارد، از این fallback استفاده کنید:
-      // (در نسخه‌ای که من دادم، کافیست handleRefresh/.. را صدا نزنید.)
-      // بنابراین اینجا هیچ کاری نمی‌کنیم؛ UI فقط ساجست نداشت را نادیده می‌گیرد.
-    } catch (_) {}
   }
 }
