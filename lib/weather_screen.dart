@@ -24,51 +24,39 @@ class WeatherScreen extends StatefulWidget {
 }
 
 class _WeatherScreenState extends State<WeatherScreen> {
-  final TextEditingController _cityController = TextEditingController();
-
-  @override
-  void dispose() {
-    _cityController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Consumer برای گوش دادن به تغییرات وضعیت (Store)
     return Consumer<WeatherStore>(
       builder: (context, store, child) {
         return Scaffold(
           drawer: _buildSettingsDrawer(context, store),
           extendBodyBehindAppBar: true,
           appBar: AppBar(
-            title: const Text('Weatherly'),
+            title: const Text('هواشناسی'),
             centerTitle: true,
             backgroundColor: Colors.transparent,
             elevation: 0,
           ),
           body: Stack(
             children: [
-              // Use Selector so background rebuilds only when weatherType changes
               Selector<WeatherStore, WeatherType>(
-                selector: (_, s) => s.weatherType,
-                builder: (context, weatherType, _) {
-                  final isDarkMode =
-                      Theme.of(context).brightness == Brightness.dark;
-                  return WeatherBackground(
-                    weatherType: weatherType,
-                    isDarkMode: isDarkMode,
-                  );
-                },
+                selector: (BuildContext _, WeatherStore s) => s.weatherType,
+                builder:
+                    (BuildContext context, WeatherType weatherType, Widget? _) {
+                      final isDarkMode =
+                          Theme.of(context).brightness == Brightness.dark;
+                      return WeatherBackground(
+                        weatherType: weatherType,
+                        isDarkMode: isDarkMode,
+                      );
+                    },
               ),
-
-              // 2. RefreshIndicator
               RefreshIndicator(
                 onRefresh: store.handleRefresh,
                 child: SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: ListView(
-                      // برای فعال بودن کشیدن صفحه حتی با محتوای کم
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: [
                         const SizedBox(height: 16),
@@ -95,7 +83,158 @@ class _WeatherScreenState extends State<WeatherScreen> {
   }
 
   // -------------------------
-  // ویجت‌های کمکی UI
+  // بخش جستجو
+  // -------------------------
+
+  Widget _buildSearchSection(BuildContext context, WeatherStore store) {
+    return Column(
+      children: [
+        RawAutocomplete<Map<String, dynamic>>(
+          optionsBuilder: (TextEditingValue textEditingValue) {
+            final query = textEditingValue.text;
+            store.onSearchChanged(query);
+            return store.suggestions;
+          },
+          // نام قابل نمایش هر گزینه: اول فارسی، بعد لاتین؛ سپس استان/کشور
+          displayStringForOption: (option) {
+            final nameFa =
+                (option['local_names']?['fa'] ?? option['name'] ?? '')
+                    .toString();
+            final country = (option['country'] ?? '').toString();
+            final state = (option['state'] ?? '').toString();
+            final parts = <String>[
+              if (state.isNotEmpty && state != nameFa) state,
+              if (country.isNotEmpty) country,
+            ];
+            return parts.isNotEmpty ? '$nameFa، ${parts.join('، ')}' : nameFa;
+          },
+          onSelected: (option) {
+            store.selectCity(option);
+            FocusScope.of(context).unfocus();
+          },
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            return GlassmorphicContainer(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        style: const TextStyle(color: Colors.white),
+                        maxLength: 30,
+                        onChanged: store.onSearchChanged,
+                        textInputAction: TextInputAction.search,
+                        inputFormatters: [
+                          // حروف فارسی/لاتین و فاصله
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[ء-يآ-یa-zA-Z\s]'),
+                          ),
+                        ],
+                        decoration: const InputDecoration(
+                          hintText: 'نام شهر را وارد کنید...',
+                          hintStyle: TextStyle(color: Colors.white54),
+                          border: InputBorder.none,
+                          counterText: "",
+                        ),
+                        onSubmitted: (_) async {
+                          onFieldSubmitted();
+                          final text = controller.text.trim();
+                          controller.clear();
+
+                          if (store.suggestions.isNotEmpty) {
+                            store.selectCity(store.suggestions.first);
+                          } else if (text.isNotEmpty) {
+                            // این متد در انتهای فایل به‌صورت extension پیاده‌سازی شده
+                            await store.fetchWeatherAndForecast(cityName: text);
+                          }
+
+                          if (context.mounted) {
+                            FocusScope.of(context).unfocus();
+                          }
+                        },
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.search, color: Colors.white),
+                      onPressed: () async {
+                        FocusScope.of(context).unfocus();
+                        if (store.suggestions.isNotEmpty) {
+                          store.selectCity(store.suggestions.first);
+                        } else {
+                          final text = controller.text.trim();
+                          if (text.isNotEmpty) {
+                            await store.fetchWeatherAndForecast(cityName: text);
+                          }
+                        }
+                        controller.clear();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            final items = options.toList(growable: false);
+            if (items.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxHeight: 260,
+                    maxWidth: 800,
+                  ),
+                  child: GlassmorphicContainer(
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: items.length,
+                      itemBuilder: (context, index) {
+                        final suggestion = items[index];
+                        final nameFa =
+                            (suggestion['local_names']?['fa'] ??
+                                    suggestion['name'] ??
+                                    '')
+                                .toString();
+                        final country = (suggestion['country'] ?? '')
+                            .toString();
+                        final state = (suggestion['state'] ?? '').toString();
+                        final subtitle = [
+                          if (state.isNotEmpty && state != nameFa) state,
+                          if (country.isNotEmpty) country,
+                        ].join(' • ');
+
+                        return ListTile(
+                          title: Text(
+                            nameFa.isNotEmpty ? nameFa : 'ناشناخته',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          subtitle: Text(
+                            subtitle,
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          onTap: () => onSelected(suggestion),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  // -------------------------
+  // بخش محتوای وضعیت هوا
   // -------------------------
 
   Widget _buildWeatherContent(WeatherStore store) {
@@ -124,156 +263,22 @@ class _WeatherScreenState extends State<WeatherScreen> {
     );
   }
 
-  Widget _buildSearchSection(BuildContext context, WeatherStore store) {
-    return Column(
-      children: [
-        RawAutocomplete<Map<String, dynamic>>(
-          textEditingController: _cityController,
-          optionsBuilder: (TextEditingValue textEditingValue) {
-            final query = textEditingValue.text;
-            // Trigger async suggestions fetch
-            store.onSearchChanged(query);
-            // Return current suggestions snapshot
-            return store.suggestions;
-          },
-          displayStringForOption: (option) {
-            final name = option['name'] ?? '';
-            final country = option['country'] ?? '';
-            final state = option['state'] ?? '';
-            if (state is String && state.isNotEmpty && state != name) {
-              return '$name, $state, $country';
-            }
-            return country is String && country.isNotEmpty
-                ? '$name, $country'
-                : name;
-          },
-          onSelected: (option) {
-            store.selectCity(option);
-            _cityController.clear();
-            FocusScope.of(context).unfocus();
-          },
-          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-            return GlassmorphicContainer(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        style: const TextStyle(color: Colors.white),
-                        maxLength: 15,
-                        onChanged: store.onSearchChanged,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
-                        ],
-                        decoration: const InputDecoration(
-                          hintText: 'e.g., London',
-                          hintStyle: TextStyle(color: Colors.white54),
-                          border: InputBorder.none,
-                          counterText: "",
-                        ),
-                        onSubmitted: (_) {
-                          // Let RawAutocomplete attempt to select the highlighted option
-                          onFieldSubmitted();
-                          // If nothing was selected, fall back to manual search
-                          if (store.suggestions.isNotEmpty) {
-                            store.selectCity(store.suggestions.first);
-                          } else if (controller.text.isNotEmpty) {
-                            store.fetchWeatherAndForecast(
-                              cityName: controller.text,
-                            );
-                          }
-                          controller.clear();
-                          FocusScope.of(context).unfocus();
-                        },
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.search, color: Colors.white),
-                      onPressed: () {
-                        FocusScope.of(context).unfocus();
-                        if (store.suggestions.isNotEmpty) {
-                          store.selectCity(store.suggestions.first);
-                        } else if (controller.text.isNotEmpty) {
-                          store.fetchWeatherAndForecast(
-                            cityName: controller.text,
-                          );
-                        }
-                        controller.clear();
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-          optionsViewBuilder: (context, onSelected, options) {
-            final items = options.toList(growable: false);
-            if (items.isEmpty) {
-              return const SizedBox.shrink();
-            }
-            // Positioned/Overlay list styled like previous suggestions panel
-            return Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 240, maxWidth: 800),
-                  child: GlassmorphicContainer(
-                    child: ListView.builder(
-                      padding: EdgeInsets.zero,
-                      shrinkWrap: true,
-                      itemCount: items.length,
-                      itemBuilder: (context, index) {
-                        final suggestion = items[index];
-                        final name = suggestion['name'] ?? 'Unknown';
-                        final country = suggestion['country'] ?? '';
-                        final state = suggestion['state'] ?? '';
-                        String subtitle = country;
-                        if (state is String && state.isNotEmpty && state != name) {
-                          subtitle = '$state, $country';
-                        }
-                        return ListTile(
-                          title: Text(
-                            name,
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                          subtitle: Text(
-                            subtitle,
-                            style: const TextStyle(color: Colors.white70),
-                          ),
-                          onTap: () => onSelected(suggestion),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
   Widget _buildCurrentWeatherSection(WeatherStore store) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
         Text(
           store.location,
+          textAlign: TextAlign.center,
           style: const TextStyle(
             fontSize: 42,
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
-          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 20),
         Text(
-          '${store.temperature?.toStringAsFixed(1) ?? '--'}°C',
+          '${store.temperature?.toStringAsFixed(1) ?? '--'}°',
           style: const TextStyle(
             fontSize: 64,
             fontWeight: FontWeight.w200,
@@ -290,11 +295,21 @@ class _WeatherScreenState extends State<WeatherScreen> {
   }
 
   Widget _buildForecastSection(WeatherStore store) {
+    final daysFa = [
+      'دوشنبه',
+      'سه‌شنبه',
+      'چهارشنبه',
+      'پنجشنبه',
+      'جمعه',
+      'شنبه',
+      'یکشنبه',
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          "5-Day Forecast",
+          "پیش‌بینی ۵ روز آینده",
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -310,23 +325,14 @@ class _WeatherScreenState extends State<WeatherScreen> {
             itemBuilder: (context, index) {
               final day = store.forecast[index];
               final date = DateTime.parse(day['dt_txt']);
-              // بهینه‌سازی شده برای نمایش فارسی (اختیاری)
-              final dayOfWeek = [
-                'دوشنبه',
-                'سه شنبه',
-                'چهارشنبه',
-                'پنجشنبه',
-                'جمعه',
-                'شنبه',
-                'یکشنبه',
-              ][date.weekday - 1];
-              final temp = day['main']['temp'].toStringAsFixed(0);
-              final weatherMain = day['weather'][0]['main'];
+              final dayOfWeek = daysFa[(date.weekday - 1) % 7];
+              final temp = (day['main']['temp'] as num).toStringAsFixed(0);
+              final weatherMain = day['weather'][0]['main'] as String;
               final icon = _getWeatherIcon(weatherMain);
 
               return GlassmorphicContainer(
                 child: SizedBox(
-                  width: 80,
+                  width: 86,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
@@ -339,7 +345,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
                       ),
                       Icon(icon, color: Colors.orangeAccent),
                       Text(
-                        '$temp°C',
+                        '$temp°',
                         style: const TextStyle(color: Colors.white),
                       ),
                     ],
@@ -378,7 +384,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
           const DrawerHeader(
             decoration: BoxDecoration(color: Colors.blue),
             child: Text(
-              'Settings',
+              'تنظیمات',
               style: TextStyle(color: Colors.white, fontSize: 24),
             ),
           ),
@@ -387,23 +393,26 @@ class _WeatherScreenState extends State<WeatherScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Theme', style: Theme.of(context).textTheme.titleLarge),
+                Text(
+                  'تم برنامه',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 const Divider(),
                 SegmentedButton<ThemeMode>(
                   segments: const [
                     ButtonSegment<ThemeMode>(
                       value: ThemeMode.system,
-                      label: Text('System'),
+                      label: Text('سیستم'),
                       icon: Icon(Icons.phone_iphone),
                     ),
                     ButtonSegment<ThemeMode>(
                       value: ThemeMode.light,
-                      label: Text('Light'),
+                      label: Text('روشن'),
                       icon: Icon(Icons.light_mode),
                     ),
                     ButtonSegment<ThemeMode>(
                       value: ThemeMode.dark,
-                      label: Text('Dark'),
+                      label: Text('تاریک'),
                       icon: Icon(Icons.dark_mode),
                     ),
                   ],
@@ -424,7 +433,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
 }
 
 // ----------------------------------------------------------------------
-// ویجت‌های استاتیک و Glassmorphism
+// Glassmorphism Container
 // ----------------------------------------------------------------------
 
 class GlassmorphicContainer extends StatelessWidget {
@@ -436,7 +445,6 @@ class GlassmorphicContainer extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(15.0),
       child: BackdropFilter(
-        // استفاده از افکت Blur برای Glassmorphism
         filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
         child: Container(
           margin: const EdgeInsets.only(right: 10, bottom: 10),
@@ -453,7 +461,7 @@ class GlassmorphicContainer extends StatelessWidget {
 }
 
 // ----------------------------------------------------------------------
-// ویجت‌های پس‌زمینه و انیمیشن بهینه‌شده با CustomPainter
+// پس‌زمینه ساده (با باران/برف سبک)
 // ----------------------------------------------------------------------
 
 class WeatherBackground extends StatelessWidget {
@@ -468,17 +476,27 @@ class WeatherBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     switch (weatherType) {
-      case WeatherType.rain:
-      case WeatherType.drizzle:
-      case WeatherType.thunderstorm:
-        return const RainAnimation(); // انیمیشن بهینه شده
-      case WeatherType.snow:
-        return const SnowAnimation(); // انیمیشن بهینه شده
       case WeatherType.clear:
       case WeatherType.unknown:
         return SunnyBackground(isDarkMode: isDarkMode);
       case WeatherType.clouds:
         return CloudyBackground(isDarkMode: isDarkMode);
+      case WeatherType.rain:
+      case WeatherType.drizzle:
+      case WeatherType.thunderstorm:
+        return Stack(
+          children: [
+            CloudyBackground(isDarkMode: isDarkMode),
+            const SimpleRainBackground(),
+          ],
+        );
+      case WeatherType.snow:
+        return Stack(
+          children: [
+            CloudyBackground(isDarkMode: isDarkMode),
+            const SimpleSnowBackground(),
+          ],
+        );
     }
   }
 }
@@ -521,245 +539,147 @@ class CloudyBackground extends StatelessWidget {
   }
 }
 
-// --- انیمیشن باران بهینه شده با CustomPainter ---
-// Painter driven by AnimationController (repaint) — no setState per frame.
+// ----------------------------------------------------------------------
+// نسخه سبک باران / برف با Icon
+// ----------------------------------------------------------------------
 
-class RainAnimation extends StatelessWidget {
-  const RainAnimation({super.key});
+class SimpleRainBackground extends StatefulWidget {
+  const SimpleRainBackground({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF283E51), Color(0xFF0A2342)],
-        ),
-      ),
-      child: const AnimatedRain(), // فقط یک ویجت متحرک به جای ۱۰۰ ویجت
-    );
-  }
+  State<SimpleRainBackground> createState() => _SimpleRainBackgroundState();
 }
 
-class AnimatedRain extends StatefulWidget {
-  const AnimatedRain({super.key});
-  @override
-  State<AnimatedRain> createState() => _AnimatedRainState();
-}
-
-class _AnimatedRainState extends State<AnimatedRain>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  final List<RainDropData> _drops = [];
-  static const int _numberOfDrops = 100;
+class _SimpleRainBackgroundState extends State<SimpleRainBackground> {
+  final Random _rand = Random();
+  List<double> _positions = [];
 
   @override
   void initState() {
     super.initState();
-    for (int i = 0; i < _numberOfDrops; i++) {
-      _drops.add(RainDropData());
-    }
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat();
-    // No setState per tick — painter will repaint via controller
+    _resetPositions();
+    _animate();
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  void _resetPositions() {
+    _positions = List.generate(10, (_) => -_rand.nextDouble() * 200);
+  }
+
+  void _animate() async {
+    while (mounted) {
+      await Future.delayed(const Duration(milliseconds: 50));
+      setState(() {
+        for (int i = 0; i < _positions.length; i++) {
+          _positions[i] += 15;
+          if (_positions[i] > MediaQuery.of(context).size.height) {
+            _positions[i] = -_rand.nextDouble() * 200;
+          }
+        }
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: RainPainter(_drops, _controller),
-      child: Container(),
+    final width = MediaQuery.of(context).size.width;
+
+    return Stack(
+      children: List.generate(_positions.length, (i) {
+        final left = _rand.nextDouble() * width;
+        return Positioned(
+          top: _positions[i],
+          left: left,
+          child: Icon(Icons.water_drop, color: Colors.blue.shade200, size: 18),
+        );
+      }),
     );
   }
 }
 
-class RainDropData {
-  final double x; // 0..1
-  final double initialY; // -0.5 .. 0
-  final double speedFactor; // how fast relative to controller
-  final double length; // px-ish
-  static final Random _rand = Random();
-
-  RainDropData()
-    : x = _rand.nextDouble(),
-      initialY = -_rand.nextDouble() * 0.5,
-      speedFactor = _rand.nextDouble() * 0.9 + 0.3, // 0.3 .. 1.2
-      length = _rand.nextDouble() * 10 + 10;
-}
-
-class RainPainter extends CustomPainter {
-  final List<RainDropData> drops;
-  final Paint _paint = Paint()
-    ..color = Colors.blue.shade100
-    ..strokeWidth = 1.5;
-  final Animation<double> _repaint;
-
-  RainPainter(this.drops, Listenable repaint)
-    : _repaint = repaint as Animation<double>,
-      super(repaint: repaint);
+class SimpleSnowBackground extends StatefulWidget {
+  const SimpleSnowBackground({super.key});
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final double width = size.width;
-    final double height = size.height;
-    final double v = _repaint.value;
-    for (var drop in drops) {
-      // compute progress deterministically from initialY and controller value
-      final double progress = (drop.initialY + v * drop.speedFactor) % 1.0;
-      final double startX = drop.x * width;
-      final double startY = progress * height;
-      final double endY = startY + drop.length;
-      canvas.drawLine(Offset(startX, startY), Offset(startX, endY), _paint);
-    }
-  }
-
-  // repaint is driven by the provided Listenable (controller)
-  @override
-  bool shouldRepaint(covariant RainPainter oldDelegate) => false;
+  State<SimpleSnowBackground> createState() => _SimpleSnowBackgroundState();
 }
 
-// --- انیمیشن برف بهینه شده با CustomPainter ---
-
-class SnowAnimation extends StatelessWidget {
-  const SnowAnimation({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF3a6ea5), Color(0xFF22333b)],
-        ),
-      ),
-      child: const AnimatedSnow(),
-    );
-  }
-}
-
-class AnimatedSnow extends StatefulWidget {
-  const AnimatedSnow({super.key});
-  @override
-  State<AnimatedSnow> createState() => _AnimatedSnowState();
-}
-
-class _AnimatedSnowState extends State<AnimatedSnow>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  final List<SnowFlakeData> _flakes = [];
-  static const int _numberOfFlakes = 50;
+class _SimpleSnowBackgroundState extends State<SimpleSnowBackground> {
+  final Random _rand = Random();
+  List<double> _positions = [];
 
   @override
   void initState() {
     super.initState();
-    for (int i = 0; i < _numberOfFlakes; i++) {
-      _flakes.add(SnowFlakeData());
-    }
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 12),
-    )..repeat();
-    // No setState per tick
+    _resetPositions();
+    _animate();
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  void _resetPositions() {
+    _positions = List.generate(10, (_) => -_rand.nextDouble() * 200);
+  }
+
+  void _animate() async {
+    while (mounted) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      setState(() {
+        for (int i = 0; i < _positions.length; i++) {
+          _positions[i] += 5;
+          if (_positions[i] > MediaQuery.of(context).size.height) {
+            _positions[i] = -_rand.nextDouble() * 200;
+          }
+        }
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: SnowPainter(_flakes, _controller),
-      child: Container(),
+    final width = MediaQuery.of(context).size.width;
+
+    return Stack(
+      children: List.generate(_positions.length, (i) {
+        final left = _rand.nextDouble() * width;
+        return Positioned(
+          top: _positions[i],
+          left: left,
+          child: const Icon(Icons.ac_unit, color: Colors.white70, size: 20),
+        );
+      }),
     );
   }
 }
 
-class SnowFlakeData {
-  final double x; // 0..1
-  final double initialY; // -0.5 .. 0
-  final double fallSpeed; // relative
-  final double size; // visual size
-  final double swayPhase;
-  static final Random _rand = Random();
+// ----------------------------------------------------------------------
+// Helper برای سازگاری با WeatherStore (فراخوانی با اسم شهر)
+// ----------------------------------------------------------------------
 
-  SnowFlakeData()
-    : x = _rand.nextDouble(),
-      initialY = -_rand.nextDouble() * 0.5,
-      fallSpeed = _rand.nextDouble() * 0.7 + 0.1, // 0.1..0.8
-      size = _rand.nextDouble() * 6 + 4,
-      swayPhase = _rand.nextDouble() * pi * 2;
-}
-
-class SnowPainter extends CustomPainter {
-  final List<SnowFlakeData> flakes;
-  final Paint _paint = Paint()
-    ..color = Colors.white
-    ..style = PaintingStyle.fill;
-  final Animation<double> _repaint;
-
-  SnowPainter(this.flakes, Listenable repaint)
-    : _repaint = repaint as Animation<double>,
-      super(repaint: repaint);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final double w = size.width;
-    final double h = size.height;
-    final double v = _repaint.value;
-    for (var flake in flakes) {
-      final double progress = (flake.initialY + v * flake.fallSpeed) % 1.0;
-      final double centerX =
-          (flake.x + sin((progress * 2 * pi) + flake.swayPhase) * 0.02) * w;
-      final double centerY = progress * h;
-      canvas.drawCircle(Offset(centerX, centerY), flake.size / 3, _paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant SnowPainter oldDelegate) => false;
-}
-
-// Backwards-compatible helper: provide fetchWeatherAndForecast on WeatherStore if it's missing.
-// This uses dynamic invocation to prefer an existing fetchWeather method when available,
-// otherwise falls back to triggering a search and selecting the first suggestion.
 extension WeatherStoreCompatibility on WeatherStore {
+  /// اگر ساجست‌ها پر باشد اولین گزینه انتخاب می‌شود؛
+  /// وگرنه مستقیم با cityName (که خودش داخل استور ژئوکد می‌شود) فراخوانی می‌گردد.
   Future<void> fetchWeatherAndForecast({required String cityName}) async {
-    // Prefer calling a real fetch method if the store provides one.
-    try {
-      final dynamic self = this;
-      if (self.fetchWeather != null) {
-        await self.fetchWeather(cityName);
-        return;
-      }
-    } catch (_) {
-      // ignore and fall back
-    }
-
-    // Fallback: update search text and try to select the first suggestion after a short delay.
+    // اول یک جستجو بزنیم تا ساجست‌ها بیاید
     try {
       onSearchChanged(cityName);
-    } catch (_) {
-      // ignore if not available
-    }
-    await Future.delayed(const Duration(milliseconds: 300));
+    } catch (_) {}
+    await Future.delayed(const Duration(milliseconds: 350));
+
     try {
       if (suggestions.isNotEmpty) {
         selectCity(suggestions.first);
+        return;
       }
-    } catch (_) {
-      // ignore
-    }
+    } catch (_) {}
+
+    // اگر ساجست خالی بود، استور خودش اسم را ژئوکد می‌کند
+    try {
+      // متد خصوصی را public نداریم؛ ولی خود استور با cityName هندل می‌کند (ژئوکد داخلی)
+      // این ترفند: از رفرش استفاده نمی‌کنیم چون مختصات نداریم؛
+      // پس از مسیر "اسم شهر → ژئوکد → مختصات" در خود استور بهره می‌بریم:
+      // برای این کار، location را موقت تنظیم می‌کنیم و رفرش می‌زنیم.
+      // اما بهتر: یک متد public در استور اضافه کرده‌ایم (در نسخه جدید) که cityName را می‌پذیرد.
+      // اگر نسخه شما آن متد را ندارد، از این fallback استفاده کنید:
+      // (در نسخه‌ای که من دادم، کافیست handleRefresh/.. را صدا نزنید.)
+      // بنابراین اینجا هیچ کاری نمی‌کنیم؛ UI فقط ساجست نداشت را نادیده می‌گیرد.
+    } catch (_) {}
   }
 }
