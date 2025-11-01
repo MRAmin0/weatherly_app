@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'weather_screen.dart';
+import 'screens/weather_screen.dart';
 import 'weather_store.dart';
 import 'config_reader.dart';
 
@@ -19,11 +19,15 @@ void main() async {
           return MaterialApp(
             title: 'Weatherly',
             theme: ThemeData(
+              useMaterial3: true,
+              fontFamily: 'Vazir',
               brightness: Brightness.light,
               primarySwatch: Colors.blue,
               scaffoldBackgroundColor: const Color(0xFFF0F4F8),
             ),
             darkTheme: ThemeData(
+              useMaterial3: true,
+              fontFamily: 'Vazir',
               brightness: Brightness.dark,
               primarySwatch: Colors.blue,
               scaffoldBackgroundColor: const Color(0xFF121212),

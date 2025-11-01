@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'weather_store.dart';
+import '../weather_store.dart';
 
 class SettingsDrawer extends StatelessWidget {
   final WeatherStore store;
