@@ -1,4 +1,10 @@
 # ☁️ Weatherly - Optimized Flutter Weather Application
+<p align="center">
+  <img src="Screenshots/1.png" width="250" style="border-radius:15px; margin:10px;" />
+  <img src="Screenshots/2.png" width="250" style="border-radius:15px; margin:10px;" />
+  <img src="Screenshots/3.png" width="250" style="border-radius:15px; margin:10px;" />
+</p>
+
 
 This is a Flutter project designed to display weather information with city search capabilities and responsive, animated backgrounds (rain and snow). This version has been refactored based on the Provider architecture, focusing heavily on performance improvement and secret key security.
 
