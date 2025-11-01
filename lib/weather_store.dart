@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, ChangeNotifier, compute;
 import 'package:http/http.dart' as http;
 import 'config_reader.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -106,7 +106,10 @@ class WeatherStore extends ChangeNotifier {
     try {
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
-        final data = await compute(json.decode, res.body) as List<dynamic>;
+        // استفاده از compute فقط در پلتفرم‌های غیروب
+        final data = kIsWeb
+            ? json.decode(res.body) as List<dynamic>
+            : await compute(json.decode, res.body) as List<dynamic>;
         final best = _pickBestCandidate(data, query);
         return best; // شامل name/local_names/lat/lon/country/state/...
       }
@@ -216,13 +219,13 @@ class WeatherStore extends ChangeNotifier {
 
       if (weatherResponse.statusCode == 200 &&
           forecastResponse.statusCode == 200) {
-        // استفاده از compute برای JSON Decoding (بهبود پرفورمنس در داده‌های بزرگتر)
-        final weatherData =
-            await compute(json.decode, weatherResponse.body)
-                as Map<String, dynamic>;
-        final forecastData =
-            await compute(json.decode, forecastResponse.body)
-                as Map<String, dynamic>;
+        // استفاده از compute فقط در پلتفرم‌های غیروب (در وب مستقیم decode سریع‌تر است)
+        final weatherData = kIsWeb
+            ? json.decode(weatherResponse.body) as Map<String, dynamic>
+            : await compute(json.decode, weatherResponse.body) as Map<String, dynamic>;
+        final forecastData = kIsWeb
+            ? json.decode(forecastResponse.body) as Map<String, dynamic>
+            : await compute(json.decode, forecastResponse.body) as Map<String, dynamic>;
 
         final dailyForecast = (forecastData['list'] as List)
             .where((item) => item['dt_txt'].toString().contains('12:00:00'))
@@ -274,7 +277,7 @@ class WeatherStore extends ChangeNotifier {
   void onSearchChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
-      if (query.length > 2) {
+      if (query.isNotEmpty) {
         _fetchCitySuggestions(query);
       } else {
         _suggestions = [];
@@ -291,7 +294,10 @@ class WeatherStore extends ChangeNotifier {
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
-        final data = await compute(json.decode, response.body) as List;
+        // استفاده از compute فقط در پلتفرم‌های غیروب
+        final data = kIsWeb
+            ? json.decode(response.body) as List
+            : await compute(json.decode, response.body) as List;
         _suggestions = data.cast<Map<String, dynamic>>();
         notifyListeners();
       }

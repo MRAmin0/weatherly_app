@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../weather_store.dart';
 
@@ -27,14 +28,14 @@ class WeatherBackground extends StatelessWidget {
         return Stack(
           children: [
             CloudyBackground(isDarkMode: isDarkMode),
-            const SimpleRainBackground(),
+            if (!kIsWeb) const SimpleRainBackground(),
           ],
         );
       case WeatherType.snow:
         return Stack(
           children: [
             CloudyBackground(isDarkMode: isDarkMode),
-            const SimpleSnowBackground(),
+            if (!kIsWeb) const SimpleSnowBackground(),
           ],
         );
     }

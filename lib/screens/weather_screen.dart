@@ -24,13 +24,19 @@ class WeatherScreen extends StatefulWidget {
 class _WeatherScreenState extends State<WeatherScreen> {
   @override
   Widget build(BuildContext context) {
-    return Consumer<WeatherStore>(
-      builder: (context, store, child) {
+    return Selector<WeatherStore, WeatherType>(
+      selector: (_, s) => s.weatherType,
+      builder: (context, weatherType, _) {
+        final isDarkMode = Theme.of(context).brightness == Brightness.dark;
         return Scaffold(
-          drawer: SettingsDrawer(
-            store: store,
-            currentThemeMode: widget.currentThemeMode,
-            onThemeChanged: widget.onThemeChanged,
+          drawer: Consumer<WeatherStore>(
+            builder: (context, store, _) {
+              return SettingsDrawer(
+                store: store,
+                currentThemeMode: widget.currentThemeMode,
+                onThemeChanged: widget.onThemeChanged,
+              );
+            },
           ),
           extendBodyBehindAppBar: true,
           appBar: AppBar(
@@ -41,40 +47,41 @@ class _WeatherScreenState extends State<WeatherScreen> {
           ),
           body: Stack(
             children: [
-              Selector<WeatherStore, WeatherType>(
-                selector: (_, s) => s.weatherType,
-                builder: (context, weatherType, _) {
-                  final isDarkMode =
-                      Theme.of(context).brightness == Brightness.dark;
-                  return WeatherBackground(
-                    weatherType: weatherType,
-                    isDarkMode: isDarkMode,
+              WeatherBackground(
+                weatherType: weatherType,
+                isDarkMode: isDarkMode,
+              ),
+              Consumer<WeatherStore>(
+                builder: (context, store, _) {
+                  return RefreshIndicator(
+                    onRefresh: store.handleRefresh,
+                    child: SafeArea(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            cacheExtent: 500,
+                            children: [
+                              const SizedBox(height: 16),
+                              _buildSearchSection(context, store),
+                              const SizedBox(height: 40),
+                              if (store.isLoading)
+                                const Center(
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white70,
+                                  ),
+                                )
+                              else
+                                _buildWeatherContent(context, store),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   );
                 },
-              ),
-              RefreshIndicator(
-                onRefresh: store.handleRefresh,
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: [
-                        const SizedBox(height: 16),
-                        _buildSearchSection(context, store),
-                        const SizedBox(height: 40),
-                        if (store.isLoading)
-                          const Center(
-                            child: CircularProgressIndicator(
-                              color: Colors.white70,
-                            ),
-                          )
-                        else
-                          _buildWeatherContent(store),
-                      ],
-                    ),
-                  ),
-                ),
               ),
             ],
           ),
@@ -85,142 +92,153 @@ class _WeatherScreenState extends State<WeatherScreen> {
 
   // 🔍 بخش جستجو
   Widget _buildSearchSection(BuildContext context, WeatherStore store) {
-    return RawAutocomplete<Map<String, dynamic>>(
-      optionsBuilder: (TextEditingValue textEditingValue) {
-        final query = textEditingValue.text;
-        store.onSearchChanged(query);
-        return store.suggestions;
-      },
-      displayStringForOption: (option) {
-        final nameFa = (option['local_names']?['fa'] ?? option['name'] ?? '')
-            .toString();
-        final country = (option['country'] ?? '').toString();
-        final state = (option['state'] ?? '').toString();
-        final parts = <String>[
-          if (state.isNotEmpty && state != nameFa) state,
-          if (country.isNotEmpty) country,
-        ];
-        return parts.isNotEmpty ? '$nameFa، ${parts.join('، ')}' : nameFa;
-      },
-      onSelected: (option) {
-        store.selectCity(option);
-        FocusScope.of(context).unfocus();
-      },
-      fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-        return GlassmorphicContainer(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    style: const TextStyle(color: Colors.white),
-                    maxLength: 30,
-                    onChanged: store.onSearchChanged,
-                    textInputAction: TextInputAction.search,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(
-                        RegExp(r'[ء-يآ-یa-zA-Z\s]'),
-                      ),
-                    ],
-                    textAlign: TextAlign.right,
-                    decoration: const InputDecoration(
-                      hintText: 'نام شهر را وارد کنید...',
-                      hintStyle: TextStyle(color: Colors.white54),
-                      border: InputBorder.none,
-                      counterText: "",
-                    ),
-                    onSubmitted: (_) async {
-                      onFieldSubmitted();
-                      final text = controller.text.trim();
-                      controller.clear();
-
-                      if (store.suggestions.isNotEmpty) {
-                        store.selectCity(store.suggestions.first);
-                      } else if (text.isNotEmpty) {
-                        await store.fetchWeatherAndForecast(cityName: text);
-                      }
-
-                      if (context.mounted) {
-                        FocusScope.of(context).unfocus();
-                      }
-                    },
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.search, color: Colors.white),
-                  onPressed: () async {
-                    FocusScope.of(context).unfocus();
-                    if (store.suggestions.isNotEmpty) {
-                      store.selectCity(store.suggestions.first);
-                    } else {
-                      final text = controller.text.trim();
-                      if (text.isNotEmpty) {
-                        await store.fetchWeatherAndForecast(cityName: text);
-                      }
-                    }
-                    controller.clear();
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-      optionsViewBuilder: (context, onSelected, options) {
-        final items = options.toList(growable: false);
-        if (items.isEmpty) return const SizedBox.shrink();
-
-        return Align(
-          alignment: Alignment.topCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 260, maxWidth: 800),
-              child: GlassmorphicContainer(
-                child: ListView.builder(
-                  padding: EdgeInsets.zero,
-                  shrinkWrap: true,
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final suggestion = items[index];
-                    final nameFa =
-                        (suggestion['local_names']?['fa'] ??
-                                suggestion['name'] ??
-                                '')
-                            .toString();
-                    final country = (suggestion['country'] ?? '').toString();
-                    final state = (suggestion['state'] ?? '').toString();
-                    final subtitle = [
-                      if (state.isNotEmpty && state != nameFa) state,
-                      if (country.isNotEmpty) country,
-                    ].join(' • ');
-
-                    return ListTile(
-                      title: Text(
-                        nameFa.isNotEmpty ? nameFa : 'ناشناخته',
+    return Center(
+      child: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.75,
+        child: RawAutocomplete<Map<String, dynamic>>(
+          optionsBuilder: (TextEditingValue textEditingValue) {
+            final query = textEditingValue.text;
+            store.onSearchChanged(query);
+            return store.suggestions;
+          },
+          displayStringForOption: (option) {
+            final nameFa =
+                (option['local_names']?['fa'] ?? option['name'] ?? '')
+                    .toString();
+            final country = (option['country'] ?? '').toString();
+            final state = (option['state'] ?? '').toString();
+            final parts = <String>[
+              if (state.isNotEmpty && state != nameFa) state,
+              if (country.isNotEmpty) country,
+            ];
+            return parts.isNotEmpty ? '$nameFa، ${parts.join('، ')}' : nameFa;
+          },
+          onSelected: (option) {
+            store.selectCity(option);
+            FocusScope.of(context).unfocus();
+          },
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            return GlassmorphicContainer(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        focusNode: focusNode,
                         style: const TextStyle(color: Colors.white),
+                        maxLength: 30,
+                        onChanged: store.onSearchChanged,
+                        textInputAction: TextInputAction.search,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[ء-يآ-یa-zA-Z\s]'),
+                          ),
+                        ],
+                        textAlign: TextAlign.right,
+                        decoration: const InputDecoration(
+                          hintText: 'نام شهر را وارد کنید...',
+                          hintStyle: TextStyle(color: Colors.white54),
+                          border: InputBorder.none,
+                          counterText: "",
+                        ),
+                        onSubmitted: (_) async {
+                          onFieldSubmitted();
+                          final text = controller.text.trim();
+                          controller.clear();
+
+                          if (store.suggestions.isNotEmpty) {
+                            store.selectCity(store.suggestions.first);
+                          } else if (text.isNotEmpty) {
+                            await store.fetchWeatherAndForecast(cityName: text);
+                          }
+
+                          if (context.mounted) {
+                            FocusScope.of(context).unfocus();
+                          }
+                        },
                       ),
-                      subtitle: Text(
-                        subtitle,
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                      onTap: () => onSelected(suggestion),
-                    );
-                  },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.search, color: Colors.white),
+                      onPressed: () async {
+                        FocusScope.of(context).unfocus();
+                        if (store.suggestions.isNotEmpty) {
+                          store.selectCity(store.suggestions.first);
+                        } else {
+                          final text = controller.text.trim();
+                          if (text.isNotEmpty) {
+                            await store.fetchWeatherAndForecast(cityName: text);
+                          }
+                        }
+                        controller.clear();
+                      },
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ),
-        );
-      },
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            final items = options.toList(growable: false);
+            if (items.isEmpty) return const SizedBox.shrink();
+
+            return Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: 260,
+                    maxWidth: MediaQuery.of(context).size.width * 0.75,
+                  ),
+                  child: GlassmorphicContainer(
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: items.length,
+                      cacheExtent: 100,
+                      itemBuilder: (context, index) {
+                        final suggestion = items[index];
+                        final nameFa =
+                            (suggestion['local_names']?['fa'] ??
+                                    suggestion['name'] ??
+                                    '')
+                                .toString();
+                        final country = (suggestion['country'] ?? '')
+                            .toString();
+                        final state = (suggestion['state'] ?? '').toString();
+                        final subtitle = [
+                          if (state.isNotEmpty && state != nameFa) state,
+                          if (country.isNotEmpty) country,
+                        ].join(' • ');
+
+                        return ListTile(
+                          title: Text(
+                            nameFa.isNotEmpty ? nameFa : 'ناشناخته',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          subtitle: Text(
+                            subtitle,
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          onTap: () => onSelected(suggestion),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 
   // 🌡 بخش محتوای وضعیت هوا
-  Widget _buildWeatherContent(WeatherStore store) {
+  Widget _buildWeatherContent(BuildContext context, WeatherStore store) {
     if (store.errorMessage != null) {
       return Center(
         child: Padding(
@@ -239,6 +257,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
     }
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         _buildCurrentWeatherSection(store),
         if (store.showAirQuality) ...[
@@ -246,71 +265,64 @@ class _WeatherScreenState extends State<WeatherScreen> {
           _buildAirQualitySection(store),
         ],
         const SizedBox(height: 40),
-
-        // ⬆️ حالا دمای ساعتی بیاد بالاتر
         if (store.showHourly && store.hourlyForecast.isNotEmpty) ...[
-          _buildHourlySection(store),
+          _buildHourlySection(context, store),
           const SizedBox(height: 30),
         ],
-
-        // ⬇️ پیش‌بینی ۵ روز آینده بیاد بعد از اون
-        if (store.forecast.isNotEmpty) _buildForecastSection(store),
+        if (store.forecast.isNotEmpty) _buildForecastSection(context, store),
       ],
     );
   }
 
-  // 🌤 بخش فعلی
+  // 🌤 وضعیت فعلی
   Widget _buildCurrentWeatherSection(WeatherStore store) {
     final tempC = store.temperature;
     final temp = store.useCelsius
         ? tempC
         : (tempC != null ? (tempC * 9 / 5) + 32 : null);
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        // نمایش نام شهر
-        Text(
-          store.location,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 42,
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Vazir', // فونت وزیر
-            color: Colors.white,
+    return RepaintBoundary(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Text(
+            store.location,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 42,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Vazir',
+              color: Colors.white,
+            ),
           ),
-        ),
-        const SizedBox(height: 20),
-
-        Text(
-          _toPersianDigits(
-            '${temp?.toStringAsFixed(1) ?? '--'}°${store.useCelsius ? 'C' : 'F'}',
+          const SizedBox(height: 20),
+          Text(
+            _toPersianDigits(
+              '${temp?.toStringAsFixed(1) ?? '--'}°${store.useCelsius ? 'C' : 'F'}',
+            ),
+            style: const TextStyle(
+              fontSize: 64,
+              fontWeight: FontWeight.w200,
+              fontFamily: 'Vazir',
+              color: Colors.white,
+            ),
           ),
-          style: const TextStyle(
-            fontSize: 64,
-            fontWeight: FontWeight.w200,
-            fontFamily: 'Vazir',
-            color: Colors.white,
+          const SizedBox(height: 20),
+          Text(
+            _translateWeather(store.weatherType),
+            style: const TextStyle(
+              fontSize: 26,
+              fontFamily: 'Vazir',
+              color: Colors.white70,
+            ),
           ),
-        ),
-
-        const SizedBox(height: 20),
-
-        // نمایش وضعیت هوا (مثلاً ابری)
-        Text(
-          _translateWeather(store.weatherType),
-          style: const TextStyle(
-            fontSize: 26,
-            fontFamily: 'Vazir',
-            color: Colors.white70,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   // 📅 پیش‌بینی روزانه
-  Widget _buildForecastSection(WeatherStore store) {
+  Widget _buildForecastSection(BuildContext context, WeatherStore store) {
     final daysFa = [
       'دوشنبه',
       'سه‌شنبه',
@@ -321,127 +333,138 @@ class _WeatherScreenState extends State<WeatherScreen> {
       'یکشنبه',
     ];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        const Text(
-          "پیش‌بینی ۵ روز آینده",
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Text(
+            "پیش‌بینی ۵ روز آینده",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 120,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: store.forecast.length,
-            itemBuilder: (context, index) {
-              final day = store.forecast[index];
-              final date = DateTime.parse(day['dt_txt']);
-              final dayOfWeek = daysFa[(date.weekday - 1) % 7];
-              final rawTemp = (day['main']['temp'] as num).toDouble();
-              final displayedTemp = store.useCelsius
-                  ? rawTemp
-                  : (rawTemp * 9 / 5) + 32;
-              final temp = displayedTemp.toStringAsFixed(0);
-              final weatherMain = day['weather'][0]['main'] as String;
-              final icon = _getWeatherIcon(weatherMain);
+          const SizedBox(height: 10),
+          Center(
+            child: SizedBox(
+              height: 120,
+              width: MediaQuery.of(context).size.width * 0.75,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: store.forecast.length,
+                cacheExtent: 200,
+                itemBuilder: (context, index) {
+                  final day = store.forecast[index];
+                  final date = DateTime.parse(day['dt_txt']);
+                  final dayOfWeek = daysFa[(date.weekday - 1) % 7];
+                  final rawTemp = (day['main']['temp'] as num).toDouble();
+                  final displayedTemp = store.useCelsius
+                      ? rawTemp
+                      : (rawTemp * 9 / 5) + 32;
+                  final temp = displayedTemp.toStringAsFixed(0);
+                  final weatherMain = day['weather'][0]['main'] as String;
+                  final icon = _getWeatherIcon(weatherMain);
 
-              return GlassmorphicContainer(
-                child: SizedBox(
-                  width: 86,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      Text(
-                        dayOfWeek,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
+                  return GlassmorphicContainer(
+                    child: SizedBox(
+                      width: 86,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          Text(
+                            dayOfWeek,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Icon(icon, color: Colors.orangeAccent),
+                          Text(
+                            _toPersianDigits('$temp°'),
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ],
                       ),
-                      Icon(icon, color: Colors.orangeAccent),
-                      Text(
-                        _toPersianDigits('$temp°'),
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   // 🌡 دمای ساعتی
-  Widget _buildHourlySection(WeatherStore store) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        const Text(
-          "دمای ساعتی",
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 120,
-          child: Center(
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: store.hourlyForecast.length,
-              itemBuilder: (context, index) {
-                final hour = store.hourlyForecast[index];
-                final date = DateTime.parse(hour['dt_txt']);
-                final rawTemp = (hour['main']['temp'] as num).toDouble();
-                final displayedTemp = store.useCelsius
-                    ? rawTemp
-                    : (rawTemp * 9 / 5) + 32;
-                final temp = displayedTemp.toStringAsFixed(0);
-                final main = hour['weather'][0]['main'] as String;
-                final icon = _getWeatherIcon(main);
-
-                return GlassmorphicContainer(
-                  child: SizedBox(
-                    width: 80,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _toPersianDigits("${date.hour}:00"),
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-                        Icon(icon, color: Colors.orangeAccent),
-                        const SizedBox(height: 8),
-                        Text(
-                          _toPersianDigits(
-                            store.useCelsius ? "$temp°C" : "$temp°F",
-                          ),
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+  Widget _buildHourlySection(BuildContext context, WeatherStore store) {
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Text(
+            "دمای ساعتی",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 10),
+          Center(
+            child: SizedBox(
+              height: 120,
+              width: MediaQuery.of(context).size.width * 0.75,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: store.hourlyForecast.length,
+                cacheExtent: 200,
+                itemBuilder: (context, index) {
+                  final hour = store.hourlyForecast[index];
+                  final date = DateTime.parse(hour['dt_txt']);
+                  final rawTemp = (hour['main']['temp'] as num).toDouble();
+                  final displayedTemp = store.useCelsius
+                      ? rawTemp
+                      : (rawTemp * 9 / 5) + 32;
+                  final temp = displayedTemp.toStringAsFixed(0);
+                  final main = hour['weather'][0]['main'] as String;
+                  final icon = _getWeatherIcon(main);
+
+                  return GlassmorphicContainer(
+                    child: SizedBox(
+                      width: 80,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _toPersianDigits("${date.hour}:00"),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Icon(icon, color: Colors.orangeAccent),
+                          const SizedBox(height: 8),
+                          Text(
+                            _toPersianDigits(
+                              store.useCelsius ? "$temp°C" : "$temp°F",
+                            ),
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -477,40 +500,50 @@ class _WeatherScreenState extends State<WeatherScreen> {
         color = Colors.grey;
     }
 
-    return GlassmorphicContainer(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'کیفیت هوا',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+    return RepaintBoundary(
+      child: Center(
+        child: SizedBox(
+          width: MediaQuery.of(context).size.width * 0.75,
+          child: GlassmorphicContainer(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'کیفیت هوا',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'شاخص: $aqi',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        status,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'شاخص: $aqi',
-                  style: const TextStyle(color: Colors.white70, fontSize: 16),
-                ),
-                Text(
-                  status,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+                  Icon(Icons.air_rounded, color: color, size: 42),
+                ],
+              ),
             ),
-            Icon(Icons.air_rounded, color: color, size: 42),
-          ],
+          ),
         ),
       ),
     );
@@ -552,7 +585,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
     }
   }
 
-  // 🔢 تبدیل اعداد انگلیسی به فارسی (با پشتیبانی از اعشار)
+  // 🔢 تبدیل اعداد انگلیسی به فارسی
   String _toPersianDigits(String input) {
     const en = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.'];
     const fa = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹', '٫'];
